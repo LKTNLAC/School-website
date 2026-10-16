@@ -1,0 +1,31 @@
+@import 'tailwindcss';
+@import '../styles/tokens.css';
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-neutral-50);
+    color: var(--color-neutral-900);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100dvh;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--color-primary-600);
+    outline-offset: 2px;
+  }
+
+  a {
+    color: var(--color-primary-600);
+    text-underline-offset: 2px;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+}

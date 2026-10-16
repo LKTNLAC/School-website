@@ -1,0 +1,394 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ================== AUTH ==================
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         String   @default("VIEWER")
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  accounts     Account[]
+  sessions     Session[]
+  auditLogs    AuditLog[]
+  contents     Content[]        @relation("ContentAuthor")
+  events       Event[]          @relation("EventAuthor")
+  documents    DocumentRevision[] @relation("DocumentRevisionAuthor")
+  contentRevisions ContentRevision[]
+  eventRevisions   EventRevision[]
+  admissionRevisions AdmissionInfoRevision[]
+  redirects    Redirect[]
+
+  @@index([role])
+  @@index([status])
+}
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  revokedAt    DateTime?
+  lastSeenAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expires])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ================== CONTENT ==================
+
+model Content {
+  id             String    @id @default(uuid())
+  type           String    // PAGE | NEWS | ANNOUNCEMENT
+  slug           String
+  title          String
+  summary        String?
+  body           String    @db.Text
+  status         String    @default("DRAFT") // DRAFT | IN_REVIEW | PUBLISHED | ARCHIVED
+  seoTitle       String?
+  seoDescription String?
+  publishedAt    DateTime?
+  authorId       String
+  categoryId     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  author      User              @relation("ContentAuthor", fields: [authorId], references: [id])
+  category    Category?         @relation(fields: [categoryId], references: [id])
+  tags        ContentTag[]
+  media       ContentMedia[]
+  revisions   ContentRevision[]
+
+  @@unique([type, slug])
+  @@index([status, publishedAt])
+  @@index([categoryId])
+  @@index([authorId])
+}
+
+model ContentRevision {
+  id         String   @id @default(uuid())
+  contentId  String
+  snapshot   Json
+  createdBy  String
+  createdAt  DateTime @default(now())
+  pinned     Boolean  @default(false)
+
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [createdBy], references: [id])
+
+  @@index([contentId, createdAt])
+  @@index([pinned])
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contents Content[]
+}
+
+model Tag {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  contents ContentTag[]
+}
+
+model ContentTag {
+  contentId String
+  tagId     String
+
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contentId, tagId])
+}
+
+model ContentMedia {
+  contentId String
+  mediaId   String
+
+  content Content    @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  media   MediaAsset @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([contentId, mediaId])
+}
+
+// ================== THPT ==================
+
+model Staff {
+  id           String   @id @default(uuid())
+  slug         String   @unique
+  fullName     String
+  position     String?
+  bio          String?  @db.Text
+  email        String?
+  departmentId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  @@index([departmentId])
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  staff Staff[]
+}
+
+model Event {
+  id          String    @id @default(uuid())
+  slug        String    @unique
+  title       String
+  description String    @db.Text
+  location    String?
+  startAt     DateTime
+  endAt       DateTime?
+  status      String    @default("DRAFT")
+  authorId    String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  author    User            @relation("EventAuthor", fields: [authorId], references: [id])
+  revisions EventRevision[]
+
+  @@index([status, startAt])
+}
+
+model EventRevision {
+  id        String   @id @default(uuid())
+  eventId   String
+  snapshot  Json
+  createdBy String
+  createdAt DateTime @default(now())
+  pinned    Boolean  @default(false)
+
+  event  Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  author User  @relation(fields: [createdBy], references: [id])
+
+  @@index([eventId, createdAt])
+  @@index([pinned])
+}
+
+model AdmissionInfo {
+  id          String   @id @default(uuid())
+  schoolYear  String   @unique
+  title       String
+  body        String   @db.Text
+  status      String   @default("DRAFT")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  revisions AdmissionInfoRevision[]
+
+  @@index([status])
+}
+
+model AdmissionInfoRevision {
+  id              String   @id @default(uuid())
+  admissionInfoId String
+  snapshot        Json
+  createdBy       String
+  createdAt       DateTime @default(now())
+  pinned          Boolean  @default(false)
+
+  admissionInfo AdmissionInfo @relation(fields: [admissionInfoId], references: [id], onDelete: Cascade)
+  author        User          @relation(fields: [createdBy], references: [id])
+
+  @@index([admissionInfoId, createdAt])
+  @@index([pinned])
+}
+
+model Faq {
+  id        String   @id @default(uuid())
+  question  String
+  answer    String   @db.Text
+  sortOrder Int      @default(0)
+  status    String   @default("DRAFT")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, sortOrder])
+}
+
+// ================== MEDIA / DOCUMENT ==================
+
+model MediaAlbum {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assets MediaAsset[]
+}
+
+model MediaAsset {
+  id         String   @id @default(uuid())
+  albumId    String?
+  storageKey String   @unique
+  fileName   String
+  fileSize   Int
+  mimeType   String
+  checksum   String
+  createdAt  DateTime @default(now())
+  deletedAt  DateTime?
+
+  album    MediaAlbum?   @relation(fields: [albumId], references: [id])
+  contents ContentMedia[]
+
+  @@index([albumId])
+}
+
+model Document {
+  id                String    @id @default(uuid())
+  slug              String    @unique
+  title             String
+  currentRevisionId String?   @unique
+  status            String    @default("DRAFT")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  currentRevision DocumentRevision?  @relation("CurrentRevision", fields: [currentRevisionId], references: [id])
+  revisions       DocumentRevision[] @relation("DocumentRevisions")
+
+  @@index([status])
+}
+
+model DocumentRevision {
+  id         String   @id @default(uuid())
+  documentId String
+  storageKey String
+  fileName   String
+  fileSize   Int
+  mimeType   String
+  checksum   String
+  snapshot   Json
+  createdBy  String
+  createdAt  DateTime @default(now())
+  pinned     Boolean  @default(false)
+
+  document        Document  @relation("DocumentRevisions", fields: [documentId], references: [id], onDelete: Cascade)
+  currentForDoc   Document? @relation("CurrentRevision")
+  author          User      @relation("DocumentRevisionAuthor", fields: [createdBy], references: [id])
+
+  @@index([documentId, createdAt])
+  @@index([pinned])
+}
+
+// ================== REDIRECT ==================
+
+model Redirect {
+  id          String    @id @default(uuid())
+  from        String    @unique
+  to          String
+  type        String
+  statusCode  Int       @default(301)
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+  hitCount    Int       @default(0)
+  lastHitAt   DateTime?
+
+  author User? @relation(fields: [createdBy], references: [id])
+
+  @@index([to])
+}
+
+// ================== CONTACT ==================
+
+model ContactSubmission {
+  id                String   @id @default(uuid())
+  name              String
+  email             String
+  message           String   @db.Text
+  status            String   @default("PENDING") // PENDING | SENT | FAILED
+  attemptCount      Int      @default(0)
+  lastAttemptAt     DateTime?
+  providerMessageId String?
+  createdAt         DateTime @default(now())
+
+  @@index([status])
+}
+
+// ================== AUDIT ==================
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// ================== SETTING ==================
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
